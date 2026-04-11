@@ -100,3 +100,29 @@ rm requirements.txt
 echo ""
 echo "Setup complete. To activate the environment in future sessions:"
 echo "  source satocean/bin/activate"
+
+# =============================================================================
+# CLONE THE COURSE MATERIALS REPOSITORY
+# =============================================================================
+# git clone downloads a full copy of a remote Git repository to your machine.
+# The repository contains all the materials needed
+# for the practical session. You only need an internet connection for this step;
+# afterwards everything is available locally.
+#
+# The repository will be created as a folder called "MER-SOM-public" in the
+# current directory. We then move it to the home directory (~) and rename it
+# to "MER-SOM" so the path is always predictable: ~/MER-SOM.
+# =============================================================================
+
+echo ""
+echo "Cloning course materials from GitHub..."
+git clone https://github.com/GanixEsnaola/MER-SOM-public
+
+# Move the cloned folder to the home directory and rename it.
+# 'mv <source> <destination>' works both as a move and a rename in one step.
+# $HOME is a shell variable that always expands to your home directory
+# (e.g. /home/yourname on Linux, /Users/yourname on macOS).
+mv MER-SOM-public "$HOME/MER-SOM"
+
+echo ""
+echo "Course materials are ready at: $HOME/MER-SOM"
