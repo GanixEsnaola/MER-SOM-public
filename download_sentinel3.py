@@ -47,6 +47,7 @@
 import getpass
 import os
 import requests   # HTTP library for REST API calls
+from datetime import datetime, timedelta
 from tqdm import tqdm  # Progress bar for downloads
 
 
@@ -84,7 +85,7 @@ def get_access_token():
     return r.json()['access_token']
 
 
-def search_products(token, product_type, start_date, end_date, bbox):
+def search_products(token, product_type, start_date, end_date, bbox, top=20):
     """
     Search the Copernicus OData catalogue for Sentinel-3 products.
 
@@ -109,7 +110,9 @@ def search_products(token, product_type, start_date, end_date, bbox):
           Points are (longitude latitude), NOT (latitude longitude).
           The polygon must be closed (last point = first point).
 
-    Returns up to $top=5 results, newest first.
+    Returns up to `top` results (default 20). A higher value reduces the
+    chance of missing a coherent match when one product type returns many
+    candidates (e.g. SL_1_RBT___ often returns more results than OL_1_EFR___).
     """
     base = 'https://catalogue.dataspace.copernicus.eu/odata/v1/Products'
     query = (
@@ -119,7 +122,7 @@ def search_products(token, product_type, start_date, end_date, bbox):
         f" and ContentDate/Start ge {start_date}Z"
         f" and ContentDate/End le {end_date}Z"
         f" and OData.CSC.Intersects(area=geography'SRID=4326;{bbox}')"
-        "&$top=5"
+        f"&$top={top}"
     )
     headers = {'Authorization': f'Bearer {token}'}
     r = requests.get(base + query, headers=headers)
@@ -129,6 +132,104 @@ def search_products(token, product_type, start_date, end_date, bbox):
     for p in results:
         print(f"    - {p['Name']}")
     return results
+
+
+def parse_product_info(name):
+    """
+    Parse satellite ID, sensing start and sensing end from a product filename.
+
+    PEDAGOGICAL NOTE — Sentinel-3 product naming convention:
+    The filename follows the ESA/EUMETSAT convention:
+      MMM_XX_X_XXXXXX__YYYYMMDDTHHMMSS_YYYYMMDDTHHMMSS_...SEN3
+      ^^^                ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^
+      Satellite (S3A/B)  Sensing start    Sensing end
+
+    Field offsets (0-indexed):
+      [0:3]   Satellite platform  e.g. 'S3A' or 'S3B'
+      [16:31] Sensing start time  e.g. '20230401T110150'
+      [32:47] Sensing end time    e.g. '20230401T110450'
+
+    Both OLCI (OL_*) and SLSTR (SL_*) instruments are on the same physical
+    platform, so products from the same satellite at the same sensing start
+    time are spatially and temporally coincident — they observed the same
+    swath at the same moment.
+    """
+    satellite = name[:3]  # 'S3A' or 'S3B'
+    start = datetime.strptime(name[16:31], '%Y%m%dT%H%M%S')
+    end = datetime.strptime(name[32:47], '%Y%m%dT%H%M%S')
+    return satellite, start, end
+
+
+def find_coherent_set(all_results):
+    """
+    Find a coherent (time-coincident) set of products across all product types.
+
+    PEDAGOGICAL NOTE — coherence matching strategy:
+    Sentinel-3 carries two instruments on the same platform:
+      - OLCI (Ocean and Land Colour Instrument)  → OL_* products
+      - SLSTR (Sea and Land Surface Temperature Radiometer) → SL_* products
+
+    Because both instruments share the same orbit, an OL_1_EFR product and an
+    SL_1_RBT product from the same satellite at the same sensing start time are
+    by definition coincident — same footprint, same acquisition moment.
+
+    L2 products (SL_2_WST) are processed along-track arcs that may span
+    ~100 minutes, covering many L1B granules. Their sensing window is much
+    longer than an L1B granule (~5 min). We therefore match L2 products not
+    by identical start time, but by checking that the L1B sensing start falls
+    within the L2 arc's [start, end] window.
+
+    Algorithm:
+      1. Use the first product type as reference; iterate its candidates.
+      2. For each candidate, attempt to find a matching product in every other
+         product type:
+           - Short granule (duration < 60 min, i.e. L1B): require same
+             satellite + sensing start within 5-minute tolerance.
+           - Long arc (duration >= 60 min, i.e. L2 WST): require same
+             satellite + reference sensing start inside [start, end].
+      3. Return the first fully-matched set, or None if no match found.
+    """
+    product_types = list(all_results.keys())
+    if not product_types:
+        return None
+
+    reference_type = product_types[0]
+    other_types = product_types[1:]
+    tolerance = timedelta(minutes=5)
+    long_arc_threshold = timedelta(hours=1)
+
+    for candidate in all_results[reference_type]:
+        sat, t_start, _ = parse_product_info(candidate['Name'])
+        matched = {reference_type: candidate}
+        success = True
+
+        for pt in other_types:
+            found = None
+            for p in all_results.get(pt, []):
+                p_sat, p_start, p_end = parse_product_info(p['Name'])
+                if p_sat != sat:
+                    continue  # Must be same satellite platform
+                duration = p_end - p_start
+                if duration >= long_arc_threshold:
+                    # L2 arc product: reference sensing start must fall within
+                    # this product's temporal window
+                    if p_start <= t_start <= p_end:
+                        found = p
+                        break
+                else:
+                    # L1B granule: sensing starts must be nearly identical
+                    if abs((p_start - t_start).total_seconds()) <= tolerance.total_seconds():
+                        found = p
+                        break
+            if found is None:
+                success = False
+                break
+            matched[pt] = found
+
+        if success:
+            return matched
+
+    return None
 
 
 def download_product(token, product_id, filename):
@@ -190,14 +291,41 @@ if __name__ == '__main__':
         # 'OL_2_WFR___': 'OLCI L2 Water Full Resolution (C2RCC Rrs, Chlor-a reference)',
     }
 
-    # Authenticate once; token is reused for all searches and downloads
+    # ── Step 1: Authenticate once; token is reused for all requests ──────────
     TOKEN = get_access_token()
 
+    # ── Step 2: Search all product types before downloading anything ─────────
+    # We collect all results first so we can select a coherent (time-coincident)
+    # set across product types. Downloading [0] from each type independently
+    # risks mixing products from different satellite passes.
+    all_results = {}
     for product_type, description in PRODUCTS_TO_DOWNLOAD.items():
         print(f"\nSearching for {description}...")
         results = search_products(TOKEN, product_type, START_DATE, END_DATE, BBOX)
         if not results:
             print(f"  No products found — try adjusting the date or bounding box.")
-            continue
-        p = results[0]  # Download the first (best-matching) result
+        else:
+            all_results[product_type] = results
+
+    if len(all_results) < len(PRODUCTS_TO_DOWNLOAD):
+        missing = set(PRODUCTS_TO_DOWNLOAD) - set(all_results)
+        print(f"\nWarning: no results for {missing}. Proceeding with available types.")
+
+    # ── Step 3: Find a coherent (time-coincident) set ───────────────────────
+    print("\nFinding a coherent (time-coincident) set of products...")
+    coherent = find_coherent_set(all_results)
+
+    if coherent is None:
+        print("  Warning: no fully-coherent set found across all product types.")
+        print("  Falling back to first result per type (times may not coincide).")
+        coherent = {pt: results[0] for pt, results in all_results.items()}
+    else:
+        print("  Coherent set selected:")
+        for pt, p in coherent.items():
+            _, t_start, _ = parse_product_info(p['Name'])
+            print(f"    [{pt}] {p['Name'][:3]}  {t_start.strftime('%Y-%m-%d %H:%M:%S')}  {p['Name']}")
+
+    # ── Step 4: Download the coherent set ────────────────────────────────────
+    for product_type, p in coherent.items():
+        print(f"\nDownloading {PRODUCTS_TO_DOWNLOAD[product_type]}...")
         download_product(TOKEN, p['Id'], p['Name'] + '.zip')
