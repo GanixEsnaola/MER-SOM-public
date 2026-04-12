@@ -227,12 +227,21 @@ ax.set_extent([
 # but for the purpose of a quick-look RGB image it is visually acceptable.
 # For geometrically precise RGB: reproject to a regular grid first (reproject.py)
 # then display with imshow.
-lat_min, lat_max = np.nanmin(lat[valid]), np.nanmax(lat[valid])
-lon_min, lon_max = np.nanmin(lon[valid]), np.nanmax(lon[valid])
+# Extent MUST cover the full image array (including land/invalid pixels rendered
+# as white). Using only valid (ocean) pixels shifts the bounding box inward,
+# causing the entire image to be painted at the wrong geographic position.
+lat_min, lat_max = np.nanmin(lat), np.nanmax(lat)
+lon_min, lon_max = np.nanmin(lon), np.nanmax(lon)
+
+# Determine row ordering: if row 0 is the northernmost scan line (descending
+# orbit, typical for daytime OLCI), origin='upper' is correct.  For ascending
+# passes row 0 is southernmost and origin='lower' is needed.
+mid_col = lat.shape[1] // 2
+origin = 'upper' if lat[0, mid_col] > lat[-1, mid_col] else 'lower'
 
 ax.imshow(
     rgb,
-    origin='upper',
+    origin=origin,
     extent=[lon_min, lon_max, lat_min, lat_max],
     transform=ccrs.PlateCarree(),
     interpolation='none',
