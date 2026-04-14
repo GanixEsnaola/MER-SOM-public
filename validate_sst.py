@@ -127,24 +127,27 @@ def unzip_sentinel(product_type, extract_dir='.'):
 
 wst_path = unzip_sentinel('SL_2_WST')
 
-# The WST product stores SST in 'sea_surface_temperature' (Kelvin) in SST_nt.nc
-# (night-time retrieval) or SST_dt.nc (daytime). Try both.
+# The WST product stores SST in 'sea_surface_temperature' (Kelvin).
+# Older multi-file layout: SST_nt.nc (night) or SST_dt.nc (day).
+# Newer GHRSST L2P layout: a single *SSTskin*.nc file.
 sst_file = None
-for candidate in ['SST_nt.nc', 'SST_dt.nc', 'l2p_flags.nc']:
-    p = wst_path + 'SST_nt.nc'
-    if os.path.exists(p):
-        sst_file = p
-        break
-    p = wst_path + 'SST_dt.nc'
+for candidate in ['SST_nt.nc', 'SST_dt.nc']:
+    p = wst_path + candidate
     if os.path.exists(p):
         sst_file = p
         break
 
 if sst_file is None:
-    # Fall back: list everything in the .SEN3 folder and let the user check
+    # GHRSST L2P layout: one *.nc file (not the manifest) in the .SEN3 folder
+    nc_files = [f for f in glob.glob(wst_path + '*.nc')
+                if 'xfdu' not in f and 'manifest' not in f]
+    if nc_files:
+        sst_file = nc_files[0]
+
+if sst_file is None:
     contents = os.listdir(wst_path)
     raise FileNotFoundError(
-        f"Could not find SST_nt.nc or SST_dt.nc in {wst_path}.\n"
+        f"Could not find SST_nt.nc, SST_dt.nc, or any *.nc in {wst_path}.\n"
         f"Contents: {contents}")
 
 print(f"Reference SST file: {sst_file}")
