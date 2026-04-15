@@ -2,7 +2,7 @@
 
 **From Raw Sentinel-3 Data to L2 Geophysical Fields**
 
-A complete 4-hour hands-on practical course package for processing Sentinel-3 satellite data, covering Sea Surface Temperature (SST) retrieval from SLSTR and Chlorophyll-a (Chlor-a) retrieval from OLCI — from raw L1B instrument data to publication-quality maps and validation.
+A complete hands-on practical course package for processing Sentinel-3 satellite data, covering Sea Surface Temperature (SST) retrieval from SLSTR and Chlorophyll-a (Chlor-a) retrieval from OLCI — from raw L1B instrument data to publication-quality maps and validation.
 
 ---
 
@@ -16,7 +16,6 @@ By the end of this session, students will be able to:
 - Download and open Sentinel-3 L1B data using `netCDF4`/`xarray`
 - Apply calibration, quality flagging, and geophysical retrieval algorithms for SST and Chlor-a from scratch
 - Produce publication-quality maps with `cartopy`/`matplotlib`
-- Interpret spatial patterns in terms of marine ecosystem dynamics
 
 **Prerequisites:** Basic Python; NetCDF familiarity helpful but not required; no prior remote sensing knowledge needed.
 
@@ -45,8 +44,8 @@ Two satellites (Sentinel-3A: 2016, Sentinel-3B: 2018) carrying four instruments:
 SST = a0 + a1·BT₁₁ + a2·(BT₁₁−BT₁₂) + a3·(BT₁₁−BT₁₂)·(sec(θ)−1)
 ```
 
-Coefficients: `a0=−2.6836`, `a1=1.0029`, `a2=0.8641`, `a3=0.6209`
-Derived from buoy matchups (iQuam dataset). Channels: S8 (10.85 µm) and S9 (12.0 µm).
+Illustrative coefficients: `a0=−2.6836`, `a1=1.0029`, `a2=0.8641`, `a3=0.6209`
+Channels: S8 (10.85 µm) and S9 (12.0 µm).
 
 ### Chlorophyll-a — OC4ME Algorithm (OLCI)
 
@@ -57,17 +56,11 @@ log₁₀(Chlor-a) = a0 + a1·R + a2·R² + a3·R³ + a4·R⁴
 
 Coefficients: `a0=0.3255`, `a1=−2.7677`, `a2=2.4409`, `a3=−1.1288`, `a4=−0.4990`
 
-Reference: O'Reilly et al. (1998).
 
 ---
 
 ## Environment Setup
 
-### System dependencies (Debian/Ubuntu)
-
-```bash
-sudo apt-get install libgeos-dev libproj-dev
-```
 
 ### Python environment
 
@@ -92,7 +85,6 @@ source satocean/bin/activate
 | Geospatial | cartopy, pyproj, shapely, pyresample |
 | Visualisation | matplotlib, cmocean, seaborn |
 | Data access | requests, tqdm |
-| Jupyter | jupyterlab, ipywidgets |
 | Optional | dask, bottleneck, rioxarray, rasterio |
 
 ---
@@ -103,14 +95,14 @@ Run the scripts in the order below, within the activated `satocean` environment.
 
 ### 1. `download_sentinel3.py` — Download Sentinel-3 data
 
-Downloads products from the **Copernicus Data Space** OData API. Authenticates with username/password, searches by product type, date range, and bounding box (default: Bay of Biscay, 2023-06-01), and downloads:
+Downloads products from the **Copernicus Data Space** OData API. Authenticates with username/password, searches by product type, date range, and bounding box (default: Bay of Biscay, 2023-06-01), and downloads a time coherent set of:
 
 - `OL_1_EFR___` — OLCI L1B (for Chlor-a and true colour)
 - `SL_1_RBT___` — SLSTR L1B (for SST retrieval)
 - `SL_2_WST___` — SLSTR L2 SST (for validation, optional)
 
 ```bash
-# Edit credentials and region of interest inside the script before running
+# Edit date and region of interest inside the script before running
 python download_sentinel3.py
 ```
 
@@ -141,7 +133,7 @@ python sst_retrieval.py
 Chlorophyll-a retrieval pipeline:
 - Loads OLCI radiances for bands at 443, 490, 510, 560 nm (subsampling configurable)
 - Applies quality flagging (invalid, land, cosmetic pixels)
-- Simplified Rayleigh atmospheric correction (Hansen & Travis 1974)
+- Simplified Rayleigh atmospheric correction
 - Derives Chlor-a with the OC4ME polynomial
 - Saves Chlor-a to NetCDF and a log-scale cartopy/cmocean algae map
 
@@ -152,7 +144,7 @@ python chlora_retrieval.py
 
 ### 5. `true_color_map.py` — Quasi-true colour RGB composite
 
-Produces an RGB image from OLCI L1B using bands at 665 nm (R), 560 nm (G), 443 nm (B). Applies TOA reflectance conversion, simplified Rayleigh correction, robust percentile clipping, and gamma correction.
+Produces an RGB image from OLCI L1B using bands at 665 nm (R), 560 nm (G), 443 nm (B). Applies TOA reflectance conversion, simplified Rayleigh correction and gamma correction.
 
 ```bash
 python true_color_map.py
@@ -220,31 +212,11 @@ python validate_sst.py
 - **Copernicus Data Space:** [dataspace.copernicus.eu](https://dataspace.copernicus.eu) — Sentinel-3 L1B and L2 products (free registration required)
 - **EUMETSAT:** Sentinel-3 SLSTR L2 WST reference products
 - **CMEMS (Copernicus Marine Service):** Higher-level ocean analysis products
-- **NASA OceanColor Web:** Ocean colour algorithms and reference data
 - **iQuam (NOAA):** In-situ SST quality monitor for matchup datasets
 
----
-
-## References
-
-- O'Reilly, J.E. et al. (1998). Ocean color chlorophyll algorithms for SeaWiFS. *JGR Oceans*, 103(C11), 24937–24953.
-- Merchant, C.J. et al. (2019). Satellite-based time-series of sea-surface temperature since 1981 for climate applications. *Scientific Data*, 6, 223.
-- Hansen, J.E. & Travis, L.D. (1974). Light scattering in planetary atmospheres. *Space Science Reviews*, 16, 527–610.
-- IOCCG (2019). *Uncertainties in Ocean Colour Remote Sensing*. Reports of the International Ocean-Colour Coordinating Group, No. 18.
 
 ---
 
-## Session Schedule
-
-| Block | Duration | Topic |
-|---|---|---|
-| 1 | ~30 min | Environment setup and data download |
-| 2 | Lecture + demo | Exploring L1B data structure |
-| 3 | Hands-on | SST retrieval (L1B → L2) |
-| 4 | Hands-on | Chlor-a retrieval (L1B → L2) |
-| 5 | Hands-on | Advanced visualisation, reprojection, validation |
-
----
 
 ## License
 
