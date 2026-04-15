@@ -220,4 +220,4 @@ python validate_sst.py
 
 ## License
 
-Course material and scripts are provided for educational use.
+MIT
