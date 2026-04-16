@@ -68,15 +68,9 @@ def find_l2_netcdf(pattern, description):
     return matches[0]
 
 
-def load_l2(filepath):
+def load_l2(filepath, varname):
     """Open a L2 NetCDF and return (data array, lat, lon)."""
     ds = xr.open_dataset(filepath)
-    # Use the first data variable that is not a coordinate.
-    # This is more robust than hardcoding a variable name like ds['sst']:
-    # xarray sometimes assigns the name '__xarray_dataarray_variable__'
-    # when a DataArray is saved without an explicit name. By taking the
-    # first entry of ds.data_vars we always find the actual data field.
-    varname = [v for v in ds.data_vars][0]
     data = ds[varname].values.astype(float)
     lat  = ds['lat'].values
     lon  = ds['lon'].values
@@ -88,8 +82,8 @@ def load_l2(filepath):
 sst_file = find_l2_netcdf('sentinel3_SST_L2*.nc',   'SST L2')
 chl_file = find_l2_netcdf('sentinel3_ChlorA_L2*.nc', 'Chlor-a L2')
 
-SST, lat_sst, lon_sst = load_l2(sst_file)
-CHL, lat_chl, lon_chl = load_l2(chl_file)
+SST, lat_sst, lon_sst = load_l2(sst_file, 'sst')
+CHL, lat_chl, lon_chl = load_l2(chl_file, 'chla')
 
 # ---- Plot ----
 fig, axes = plt.subplots(1, 2, figsize=(18, 8),
