@@ -160,6 +160,7 @@ if valid_fraction < 1.0:
 # preserving the swath geometry. This is standard for L2 swath products.
 sst_da = xr.DataArray(
     SST_celsius,
+    name='sst',
     dims=['y', 'x'],
     coords={'lat': (['y', 'x'], lat), 'lon': (['y', 'x'], lon)},
     attrs={
