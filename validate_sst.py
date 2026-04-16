@@ -95,8 +95,7 @@ def find_file(pattern, description):
 
 our_file = find_file('sentinel3_SST_L2*.nc', 'our SST L2')
 ds_our   = xr.open_dataset(our_file)
-varname  = [v for v in ds_our.data_vars][0]
-our_sst  = ds_our[varname].values.astype(np.float32)   # (rows, cols) in °C
+our_sst  = ds_our['sst'].values.astype(np.float32)   # (rows, cols) in °C
 lat_our  = ds_our['lat'].values.astype(np.float32)
 lon_our  = ds_our['lon'].values.astype(np.float32)
 ds_our.close()
