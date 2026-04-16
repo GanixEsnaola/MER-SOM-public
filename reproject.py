@@ -103,13 +103,12 @@ def find_l2_netcdf(pattern, description):
     return matches[0]
 
 
-def load_l2(filepath):
-    """Return (data, lat, lon) from an L2 NetCDF."""
+def load_l2(filepath, varname):
+    """Return (data, lat, lon, attrs) from an L2 NetCDF."""
     ds = xr.open_dataset(filepath)
-    varname = [v for v in ds.data_vars][0]
-    data = ds[varname].values.astype(np.float32)
-    lat  = ds['lat'].values.astype(np.float32)
-    lon  = ds['lon'].values.astype(np.float32)
+    data  = ds[varname].values.astype(np.float32)
+    lat   = ds['lat'].values.astype(np.float32)
+    lon   = ds['lon'].values.astype(np.float32)
     attrs = ds[varname].attrs
     ds.close()
     return data, lat, lon, attrs
@@ -118,8 +117,8 @@ def load_l2(filepath):
 sst_file = find_l2_netcdf('sentinel3_SST_L2*.nc',   'SST L2')
 chl_file = find_l2_netcdf('sentinel3_ChlorA_L2*.nc', 'Chlor-a L2')
 
-SST, lat_sst, lon_sst, sst_attrs = load_l2(sst_file)
-CHL, lat_chl, lon_chl, chl_attrs = load_l2(chl_file)
+SST, lat_sst, lon_sst, sst_attrs = load_l2(sst_file, 'sst')
+CHL, lat_chl, lon_chl, chl_attrs = load_l2(chl_file, 'chla')
 
 print(f"SST swath shape : {SST.shape}")
 print(f"Chlor-a swath shape: {CHL.shape}")
