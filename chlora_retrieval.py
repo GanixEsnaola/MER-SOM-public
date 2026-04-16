@@ -236,7 +236,9 @@ print(f"Median: {np.nanmedian(chla):.3f} mg/m3  |  Valid pixels: {valid_frac:.1f
 
 # ---- Save L2 NetCDF ----
 chla_da = xr.DataArray(
-    chla, dims=['y', 'x'],
+    chla,
+    name='chla',
+    dims=['y', 'x'],
     coords={'lat': (['y', 'x'], lat), 'lon': (['y', 'x'], lon)},
     attrs={
         'long_name': 'Chlorophyll-a concentration',
