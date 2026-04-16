@@ -1,4 +1,4 @@
-# MER-SOM — Satellite Meteorology & Oceanography
+# MER-SOM — Satellite Oceanography & Meteorology
 
 **From Raw Sentinel-3 Data to L2 Geophysical Fields**
 
