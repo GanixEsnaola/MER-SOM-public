@@ -71,8 +71,8 @@ ipywidgets      # Interactive widgets inside Jupyter notebooks
 bottleneck      # Accelerates some numpy/pandas operations (faster NaN handling)
 dask            # Parallel/out-of-core computation for datasets larger than RAM
 
-#Visulization of netcdf files
-ncvue
+#Visulization of content netcdf files
+ncdump-rich
 EOF
 
 # Create the virtual environment.
