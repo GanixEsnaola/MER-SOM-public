@@ -63,16 +63,15 @@ seaborn         # Statistical visualisation (used for histograms, pair plots)
 requests        # HTTP client library — used to call the Copernicus OData API
 tqdm            # Progress bars for long downloads
 
-# Jupyter
-jupyterlab      # Interactive notebook environment (recommended for exercises)
-ipywidgets      # Interactive widgets inside Jupyter notebooks
-
 # Optional but useful
 bottleneck      # Accelerates some numpy/pandas operations (faster NaN handling)
 dask            # Parallel/out-of-core computation for datasets larger than RAM
 
 #Visulization of content netcdf files
 ncdump-rich
+
+#GEOTiff exports
+rioxarray
 EOF
 
 # Create the virtual environment.
