@@ -67,10 +67,9 @@ def find_l2_netcdf(pattern, description):
     return matches[0]
 
 
-def load_l2_flat(filepath):
+def load_l2_flat(filepath, varname):
     """Open a L2 NetCDF and return flattened 1-D data array."""
     ds = xr.open_dataset(filepath)
-    varname = [v for v in ds.data_vars][0]
     data = ds[varname].values.astype(float).ravel()
     ds.close()
     return data
@@ -80,8 +79,8 @@ def load_l2_flat(filepath):
 sst_file = find_l2_netcdf('sentinel3_SST_L2*.nc',   'SST L2')
 chl_file = find_l2_netcdf('sentinel3_ChlorA_L2*.nc', 'Chlor-a L2')
 
-SST = load_l2_flat(sst_file)
-CHL = load_l2_flat(chl_file)
+SST = load_l2_flat(sst_file, 'sst')
+CHL = load_l2_flat(chl_file, 'chla')
 
 # ---- Co-location of SST and Chlor-a ----
 # SST (SLSTR, ~1 km native resolution) and Chlor-a (OLCI, 300 m native,
