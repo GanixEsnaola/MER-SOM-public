@@ -117,9 +117,9 @@ ax.set_ylabel('log$_{10}$(Chlorophyll-a)  [mg/m³]', fontsize=12)
 ax.set_title('SST vs Chlorophyll-a — Sentinel-3\n'
              '(cold/upwelling water tends to have higher Chl-a)', fontsize=11)
 ax.axhline(0, color='steelblue', linewidth=1, linestyle='--',
-           label='1 mg/m³ threshold (meso/eutrophic boundary)')
+           label='1 mg/m³ threshold')
 ax.axhline(-1, color='gray', linewidth=0.8, linestyle=':',
-           label='0.1 mg/m³ (oligo/mesotrophic boundary)')
+           label='0.1 mg/m³')
 ax.legend(fontsize=9)
 
 plt.tight_layout()
