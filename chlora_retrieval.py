@@ -157,7 +157,18 @@ ds_geo.close()
 ds_qf = xr.open_dataset(olci_path + 'qualityFlags.nc')
 qf = ds_qf['quality_flags'].values[::SUBSAMPLE, ::SUBSAMPLE]
 ds_qf.close()
-invalid_mask = ((qf & (1 << 31)) != 0) | ((qf & (1 << 27)) != 0) | ((qf & (1 << 25)) != 0)
+invalid_mask = (
+    ((qf & (1 << 31)) != 0) |  # INVALID
+    ((qf & (1 << 30)) != 0) |  # COASTLINE  (mixed land/ocean pixels)
+    ((qf & (1 << 29)) != 0) |  # LAND       (was missing → potential spurious Chl-a)
+    ((qf & (1 << 28)) != 0) |  # CLOUD (potentially aggressive for Rayleigh-only pipeline)
+    #                            cloud contamination → negative Rrs → caught by rrs[rrs<=0]=nan
+    ((qf & (1 << 27)) != 0) |  # CLOUD_AMBIGUOUS
+    ((qf & (1 << 26)) != 0) |  # CLOUD_MARGIN (potential to wipes large areas of
+    #                            valid open-ocean pixels)
+    ((qf & (1 << 25)) != 0)    # SNOW_ICE (Could be removed depending on location)
+)
+
 del qf  # free memory
 
 # ---- Simplified Rayleigh atmospheric correction ----
