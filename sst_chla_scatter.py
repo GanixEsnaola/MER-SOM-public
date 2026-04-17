@@ -38,18 +38,29 @@
 #   These thresholds are widely used in ocean colour literature for
 #   classifying trophic status and primary productivity estimates.
 #
+# CO-LOCATION STRATEGY — pyresample nearest-neighbour:
+#   SST  (SLSTR, ~1 km native) and Chlor-a (OLCI, ~600 m after subsampling)
+#   live on different irregular swath grids. Comparing pixel #N of the
+#   flattened SST array with pixel #N of the flattened Chl-a array is
+#   geometrically wrong — they map to different geographic locations.
+#
+#   Correct approach (implemented here):
+#     1. Read the 2-D lat/lon coordinates stored in each L2 NetCDF.
+#     2. Wrap each swath as a pyresample SwathDefinition.
+#     3. Define a common regular 0.01° output grid covering the overlap.
+#     4. Resample both swaths onto that grid with nearest-neighbour (kd-tree).
+#     5. Compare pixels at the same grid cell — now truly co-located.
+#
 # PREREQUISITE:
 #   Run sst_retrieval.py and chlora_retrieval.py first.
 # =============================================================================
-# sst_chla_scatter.py
-# SST vs Chlor-a scatter plot — explores the biological relationship
-# between thermal stratification and phytoplankton biomass
 
 import glob
 import os
 import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
+from pyresample import geometry, kd_tree
 
 
 def find_l2_netcdf(pattern, description):
@@ -67,44 +78,98 @@ def find_l2_netcdf(pattern, description):
     return matches[0]
 
 
-def load_l2_flat(filepath, varname):
-    """Open a L2 NetCDF and return flattened 1-D data array."""
+def load_l2_with_coords(filepath, varname):
+    """
+    Load a L2 NetCDF variable together with its 2-D lat/lon coordinates.
+
+    Returns (data, lat, lon) as 2-D float32 arrays.
+    Both retrieval scripts store lat/lon as non-dimension coordinates on
+    the (y, x) swath grid — they are NOT regular 1-D axis arrays.
+    """
     ds = xr.open_dataset(filepath)
-    data = ds[varname].values.astype(float).ravel()
+    data = ds[varname].values.astype(np.float32)
+    lat  = ds['lat'].values.astype(np.float32)
+    lon  = ds['lon'].values.astype(np.float32)
     ds.close()
-    return data
+    return data, lat, lon
 
 
 # ---- Auto-detect L2 files ----
 sst_file = find_l2_netcdf('sentinel3_SST_L2*.nc',   'SST L2')
 chl_file = find_l2_netcdf('sentinel3_ChlorA_L2*.nc', 'Chlor-a L2')
 
-SST = load_l2_flat(sst_file, 'sst')
-CHL = load_l2_flat(chl_file, 'chla')
+sst_data, lat_sst, lon_sst = load_l2_with_coords(sst_file, 'sst')
+chl_data, lat_chl, lon_chl = load_l2_with_coords(chl_file, 'chla')
 
-# ---- Co-location of SST and Chlor-a ----
-# SST (SLSTR, ~1 km native resolution) and Chlor-a (OLCI, 300 m native,
-# but subsampled to ~600 m by chlora_retrieval.py) have DIFFERENT grid sizes.
-# After flattening to 1-D with .ravel(), they will have different lengths.
-#
-# SIMPLE APPROACH USED HERE (adequate for a teaching exercise):
-#   Trim both arrays to the shorter length with [:min_len].
-#   This implicitly assumes a "nearest-pixel" co-location from the top-left
-#   of the scene outward. It is NOT geometrically correct (pixels from
-#   different positions are compared), but the bias is small for a scatter
-#   plot exploring a general ecological relationship.
-#
-# RIGOROUS APPROACH (see reproject.py):
-#   Resample both products onto a common regular grid using pyresample,
-#   then compare pixel-by-pixel. This is required for quantitative analysis.
-min_len = min(len(SST), len(CHL))
-SST = SST[:min_len]
-CHL = CHL[:min_len]
+print(f"SST  swath shape : {sst_data.shape}  ({sst_data.size:,} pixels)")
+print(f"Chl-a swath shape: {chl_data.shape}  ({chl_data.size:,} pixels)")
 
-valid = np.isfinite(SST) & np.isfinite(CHL)
-SST_v = SST[valid]
-CHL_v = CHL[valid]
+# ---- Co-location via pyresample nearest-neighbour resampling ----
+#
+# Step 1 — wrap each irregular swath in a SwathDefinition.
+#   SwathDefinition accepts 2-D lon/lat arrays, which is exactly what our
+#   L2 NetCDF files contain.  No flattening needed at this stage.
+sst_swath = geometry.SwathDefinition(lons=lon_sst, lats=lat_sst)
+chl_swath = geometry.SwathDefinition(lons=lon_chl, lats=lat_chl)
+
+# Step 2 — define a common regular output grid.
+#   Resolution: 0.01° ≈ 1 km at mid-latitudes, matching the coarser of the
+#   two products (SLSTR SST at ~1 km).  The grid covers only the geographic
+#   overlap of the two swaths so no output cells are left empty by design.
+RES_DEG  = 0.01
+lon_min  = float(max(np.nanmin(lon_sst), np.nanmin(lon_chl)))
+lon_max  = float(min(np.nanmax(lon_sst), np.nanmax(lon_chl)))
+lat_min  = float(max(np.nanmin(lat_sst), np.nanmin(lat_chl)))
+lat_max  = float(min(np.nanmax(lat_sst), np.nanmax(lat_chl)))
+
+if lon_min >= lon_max or lat_min >= lat_max:
+    raise ValueError(
+        "SST and Chl-a swaths do not overlap geographically. "
+        "Check that both files are from the same satellite pass."
+    )
+
+nx = int(round((lon_max - lon_min) / RES_DEG))
+ny = int(round((lat_max - lat_min) / RES_DEG))
+print(f"Common grid: {nx} × {ny} cells  "
+      f"({lon_min:.2f}°–{lon_max:.2f}°E, {lat_min:.2f}°–{lat_max:.2f}°N)")
+
+area_def = geometry.AreaDefinition(
+    'common_grid',
+    f'Regular {RES_DEG}° grid covering SST/Chl-a overlap',
+    'longlat',
+    {'proj': 'longlat', 'datum': 'WGS84'},
+    nx, ny,
+    (lon_min, lat_min, lon_max, lat_max),  # (x_ll, y_ll, x_ur, y_ur) in degrees
+)
+
+# Step 3 — resample both swaths onto the common grid.
+#   radius_of_influence: maximum distance (metres) to search for a swath
+#   neighbour for each output grid cell.  1 500 m is generous for a 0.01°
+#   (≈ 1 km) grid while being tight enough to avoid cross-front smearing.
+RADIUS_M = 1500
+print("Resampling SST onto common grid …")
+sst_grid = kd_tree.resample_nearest(
+    sst_swath, sst_data, area_def,
+    radius_of_influence=RADIUS_M, fill_value=np.nan, nprocs=1,
+)
+print("Resampling Chl-a onto common grid …")
+chl_grid = kd_tree.resample_nearest(
+    chl_swath, chl_data, area_def,
+    radius_of_influence=RADIUS_M, fill_value=np.nan, nprocs=1,
+)
+
+# Step 4 — retain only cells where BOTH products have valid data.
+valid = np.isfinite(sst_grid) & np.isfinite(chl_grid) & (chl_grid > 0)
+SST_v = sst_grid[valid]
+CHL_v = chl_grid[valid]
 print(f"Co-located valid pixels: {valid.sum():,}")
+
+if valid.sum() == 0:
+    raise RuntimeError(
+        "No co-located valid pixels found. "
+        "Verify that the SST and Chl-a files are from the same satellite pass "
+        "and that both retrieval scripts produced valid output."
+    )
 
 # ---- Hexbin scatter (handles large pixel counts efficiently) ----
 fig, ax = plt.subplots(figsize=(8, 6))
