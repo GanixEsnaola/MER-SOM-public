@@ -85,7 +85,8 @@ def get_access_token():
     return r.json()['access_token']
 
 
-def search_products(token, product_type, start_date, end_date, bbox, top=20):
+def search_products(token, product_type, start_date, end_date, bbox,
+                    satellite='', top=20):
     """
     Search the Copernicus OData catalogue for Sentinel-3 products.
 
@@ -115,6 +116,7 @@ def search_products(token, product_type, start_date, end_date, bbox, top=20):
     candidates (e.g. SL_1_RBT___ often returns more results than OL_1_EFR___).
     """
     base = 'https://catalogue.dataspace.copernicus.eu/odata/v1/Products'
+    sat_filter = f" and startswith(Name,'{satellite}')" if satellite else ''
     query = (
         f"?$filter=Collection/Name eq 'SENTINEL-3'"
         f" and Attributes/OData.CSC.StringAttribute/any("
@@ -122,6 +124,7 @@ def search_products(token, product_type, start_date, end_date, bbox, top=20):
         f" and ContentDate/Start ge {start_date}Z"
         f" and ContentDate/End le {end_date}Z"
         f" and OData.CSC.Intersects(area=geography'SRID=4326;{bbox}')"
+        f"{sat_filter}"
         f"&$top={top}"
     )
     headers = {'Authorization': f'Bearer {token}'}
@@ -278,6 +281,12 @@ if __name__ == '__main__':
     # Approximate extent: 10°W–5°E, 35°N–48°N
     BBOX = 'POLYGON((-10 35, 5 35, 5 48, -10 48, -10 35))'
 
+    # Force a specific satellite platform: 'S3A', 'S3B', or '' for no preference.
+    # When set, the OData search, coherent-set selection and download are all
+    # restricted to that platform.  Leave empty to allow both S3A and S3B and
+    # let find_coherent_set() pick the best-matching pass.
+    FORCE_SATELLITE = ''
+
     # Dictionary of products to download.
     # Keys are the exact productType strings used by the OData API.
     # The trailing underscores are mandatory — they pad the string to a fixed
@@ -299,9 +308,13 @@ if __name__ == '__main__':
     # set across product types. Downloading [0] from each type independently
     # risks mixing products from different satellite passes.
     all_results = {}
+    if FORCE_SATELLITE:
+        print(f"\nSatellite filter active: only {FORCE_SATELLITE} products will be considered.")
+
     for product_type, description in PRODUCTS_TO_DOWNLOAD.items():
         print(f"\nSearching for {description}...")
-        results = search_products(TOKEN, product_type, START_DATE, END_DATE, BBOX)
+        results = search_products(TOKEN, product_type, START_DATE, END_DATE, BBOX,
+                                  satellite=FORCE_SATELLITE)
         if not results:
             print(f"  No products found — try adjusting the date or bounding box.")
         else:
