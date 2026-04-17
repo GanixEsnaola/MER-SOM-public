@@ -212,12 +212,6 @@ del R, G, B
 fig = plt.figure(figsize=(12, 8))
 ax  = plt.axes(projection=ccrs.PlateCarree())
 
-valid = ~nan_mask
-ax.set_extent([
-    np.nanmin(lon[valid]), np.nanmax(lon[valid]),
-    np.nanmin(lat[valid]), np.nanmax(lat[valid])
-], crs=ccrs.PlateCarree())
-
 # IMPORTANT NOTE ON imshow() vs pcolormesh() for swath data:
 # pcolormesh() accepts individual lat/lon per pixel → correct for irregular grids.
 # imshow() assumes the image is already on a regular grid, but is the only
@@ -227,11 +221,16 @@ ax.set_extent([
 # but for the purpose of a quick-look RGB image it is visually acceptable.
 # For geometrically precise RGB: reproject to a regular grid first (reproject.py)
 # then display with imshow.
-# Extent MUST cover the full image array (including land/invalid pixels rendered
-# as white). Using only valid (ocean) pixels shifts the bounding box inward,
-# causing the entire image to be painted at the wrong geographic position.
+#
+# CRITICAL: both ax.set_extent AND imshow's extent parameter MUST use the same
+# bounding box — the full swath extent (ALL pixels, including white land/invalid
+# ones). Using only valid (ocean) pixels for ax.set_extent while imshow uses the
+# full extent places the image array in a larger box than the map viewport shows,
+# shifting all ocean pixels onto the land portion of the map.
 lat_min, lat_max = np.nanmin(lat), np.nanmax(lat)
 lon_min, lon_max = np.nanmin(lon), np.nanmax(lon)
+
+ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
 
 # Determine row ordering: if row 0 is the northernmost scan line (descending
 # orbit, typical for daytime OLCI), origin='upper' is correct.  For ascending
@@ -248,8 +247,9 @@ ax.imshow(
     aspect='auto',
 )
 
-ax.add_feature(cfeature.COASTLINE, linewidth=0.8, zorder=4, edgecolor='black')
-ax.add_feature(cfeature.BORDERS,   linewidth=0.4, zorder=4, edgecolor='black',
+ax.add_feature(cfeature.LAND,      color='lightgray', zorder=3)
+ax.add_feature(cfeature.COASTLINE, linewidth=0.8,    zorder=4, edgecolor='black')
+ax.add_feature(cfeature.BORDERS,   linewidth=0.4,    zorder=4, edgecolor='black',
                linestyle=':')
 ax.gridlines(draw_labels=True, linewidth=0.5, color='gray', alpha=0.6)
 ax.set_title(
