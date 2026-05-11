@@ -75,19 +75,25 @@ rioxarray
 EOF
 
 # Create the virtual environment.
-# python3 -m venv <name> creates a new folder with its own Python interpreter,
-# pip, and site-packages. The environment is completely separate from the
-# system Python and from any other venvs on this machine.
-python3 -m venv satocean
+# --without-pip skips the ensurepip step, which requires the python3-venv
+# system package. We install pip ourselves via get-pip.py right after,
+# so no admin rights (sudo) are needed at any point.
+python3 -m venv --without-pip satocean
+
 
 # Activate the environment.
 # After this command, 'python' and 'pip' refer to the venv's versions,
 # not the system ones. Your shell prompt will change to show (satocean).
 source satocean/bin/activate
 
-# Upgrade pip first.
-# The version of pip bundled with venv is often outdated. Modern pip resolves
-# dependencies better and is faster at downloading packages.
+# Bootstrap pip without needing ensurepip or admin rights.
+# get-pip.py is the official pip installer maintained by the PyPA.
+# We download it, run it inside the venv, then delete it.
+curl -sSL https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+python get-pip.py
+rm get-pip.py
+
+# Upgrade pip to the latest version now that it is installed.
 pip install --upgrade pip
 
 # Install all packages listed in requirements.txt.
